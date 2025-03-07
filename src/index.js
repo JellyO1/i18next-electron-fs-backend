@@ -19,6 +19,7 @@ export const writeFileRequest = "WriteFile-Request";
 export const readFileResponse = "ReadFile-Response";
 export const writeFileResponse = "WriteFile-Response";
 export const changeLanguageRequest = "ChangeLanguage-Request";
+export const resourcesPathRequest = "ResourcesPath-Request";
 
 // This is the code that will go into the preload.js file
 // in order to set up the contextBridge api
@@ -45,7 +46,7 @@ export const preloadBindings = function (ipcRenderer, process) {
             // Exposing values of [Node's] process for use in the client-side options
             environment: process.env.NODE_ENV,
             platform: process.platform,
-            resourcesPath: process.resourcesPath !== undefined ? process.resourcesPath + `${process.platform === "win32" ? "\\.." : "/.."}` : undefined
+            resourcesPath: ipcRenderer.sendSync(resourcesPathRequest)
         }
     };
 };
@@ -66,11 +67,6 @@ export const mainBindings = function (ipcMain, browserWindow, fs) {
     };
 
     ipcMain.on(readFileRequest, readFileRequestCallback);
-
-    // Remove readFileRequest callback when the window is closed
-    browserWindow.on('closed', (e) => {
-        ipcMain.removeListener(readFileRequest, readFileRequestCallback);
-    });
 
     const writeFileRequestCallback = (_IpcMainEvent, args) => {
         const callback = function (error) {
@@ -97,10 +93,17 @@ export const mainBindings = function (ipcMain, browserWindow, fs) {
     };
 
     ipcMain.on(writeFileRequest, writeFileRequestCallback);
-
-    // Remove writeFileRequest callback when the window is closed
+    
+    const resourcesPathRequestCallback = (event, args) => {
+        event.returnValue = process.resourcesPath;
+    };
+    
+    ipcMain.on(resourcesPathRequest, resourcesPathRequestCallback);
+    
     browserWindow.on('closed', (e) => {
+        ipcMain.removeListener(readFileRequest, readFileRequestCallback);
         ipcMain.removeListener(writeFileRequest, writeFileRequestCallback);
+        ipcMain.removeListener(resourcesPathRequest, resourcesPathRequestCallback);
     });
 };
 
@@ -109,6 +112,7 @@ export const mainBindings = function (ipcMain, browserWindow, fs) {
 export const clearMainBindings = function (ipcMain) {
     ipcMain.removeAllListeners(readFileRequest);
     ipcMain.removeAllListeners(writeFileRequest);
+    ipcMain.removeAllListeners(resourcesPathRequest);
 }
 
 // Template is found at: https://www.i18next.com/misc/creating-own-plugins#backend;
@@ -225,11 +229,11 @@ class Backend {
                 if (args.error) {
                     callback = this.writeCallbacks[keys[i]].callback;
                     delete this.writeCallbacks[keys[i]];
-                    callback(args.error);
+                    if (callback !== null && typeof callback === "function") callback(args.error);
                 } else {
                     callback = this.writeCallbacks[keys[i]].callback;
                     delete this.writeCallbacks[keys[i]];
-                    callback(null, true);
+                    if (callback !== null && typeof callback === "function") callback(null, true);
                 }
             }
         });
